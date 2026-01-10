@@ -1,33 +1,38 @@
 #!/usr/bin/env python3
 """
 Script de surveillance de token Solana avec alertes Telegram
-Utilise l'API DexScreener pour vérifier le prix et envoie des alertes aux paliers x10, x20... x100
+Utilise l'API DexScreener pour vérifier le market cap et envoie des alertes aux paliers x10, x20... x100
 """
 
 import requests
 import time
-from typing import Optional, Dict
+from typing import Optional, Dict, Tuple
 
 # ==================== CONFIGURATION ====================
 # Liste des tokens à surveiller
 # Chaque token est un dictionnaire avec :
 #   - "name": Nom/symbole du token (pour les alertes)
 #   - "address": Adresse du contrat Solana
-#   - "buy_price": Votre prix d'achat en USD
+#   - "buy_market_cap": Market cap en $ au moment de l'achat
 #   - "amount_invested": Montant investi en USD
-# Liste des tokens à surveiller
 TOKENS = [
     {
         "name": "MMGA",
         "address": "87B6mb9KBjaF5NHrB3H33f7grdUHi4oWmMErjhZ5bonk",
-        "buy_price": 0.000834,
+        "buy_market_cap": 643000,
         "amount_invested": 37.0
     },
     {
         "name": "Hungry",
         "address": "DkrrbsbxPaTt6Nt1nF1JvRmCLU4K6n3ZWVavvjvWpump",
-        "buy_price": 0.0000255,
+        "buy_market_cap": 23300,
         "amount_invested": 2.964
+    },
+    {
+        "name": "Alone",
+        "address": "4jorbNYWamEJQd8DajmFxbqk9ugVr9DHyPTAUyT6pump",
+        "buy_market_cap": 208000,
+        "amount_invested": 3.99
     },
 ]
 
@@ -43,15 +48,15 @@ MULTIPLIERS = [1.05, 1.1, 1.5, 2, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 # =======================================================
 
 
-def get_token_price(token_address: str) -> Optional[float]:
+def get_token_data(token_address: str) -> Optional[Tuple[float, float]]:
     """
-    Récupère le prix actuel du token Solana via l'API DexScreener
+    Récupère le prix et market cap actuels du token Solana via l'API DexScreener
     
     Args:
         token_address: Adresse du contrat Solana
         
     Returns:
-        Prix actuel en USD ou None en cas d'erreur
+        Tuple (prix_usd, market_cap) ou None en cas d'erreur
     """
     try:
         url = f"https://api.dexscreener.com/latest/dex/tokens/{token_address}"
@@ -60,58 +65,52 @@ def get_token_price(token_address: str) -> Optional[float]:
         
         data = response.json()
         
-        # L'API retourne une liste de pairs, on prend la première (la plus liquide généralement)
         if data.get("pairs") and len(data["pairs"]) > 0:
             pair = data["pairs"][0]
             price_usd = pair.get("priceUsd")
+            market_cap = pair.get("marketCap") or pair.get("fdv")
             
-            if price_usd:
-                return float(price_usd)
+            if price_usd and market_cap:
+                return float(price_usd), float(market_cap)
         
         print(f"⚠️  Aucune paire trouvée pour le token {token_address}")
         return None
         
     except requests.exceptions.RequestException as e:
-        print(f"❌ Erreur lors de la récupération du prix: {e}")
+        print(f"❌ Erreur lors de la récupération des données: {e}")
         return None
     except (KeyError, ValueError, IndexError) as e:
         print(f"❌ Erreur lors du parsing des données: {e}")
         return None
 
 
-def send_telegram_alert(token_name: str, multiplier: int, current_price: float, 
-                       buy_price: float, amount_invested: float) -> bool:
+def send_telegram_alert(token_name: str, multiplier: float, current_market_cap: float,
+                       buy_market_cap: float, amount_invested: float, current_price: float) -> bool:
     """
     Envoie une alerte Telegram avec les informations du gain
-    
-    Args:
-        token_name: Nom/symbole du token
-        multiplier: Le multiplicateur atteint (x10, x20, etc.)
-        current_price: Prix actuel du token
-        buy_price: Prix d'achat
-        amount_invested: Montant investi en USD
-        
-    Returns:
-        True si l'alerte a été envoyée avec succès, False sinon
     """
     try:
-        # Calcul du PNL
-        tokens_owned = amount_invested / buy_price
-        current_value = tokens_owned * current_price
+        # Calcul du PNL basé sur le multiplicateur du market cap
+        current_value = amount_invested * multiplier
         pnl = current_value - amount_invested
+        gain_percentage = (multiplier - 1) * 100
         
-        # Calcul du pourcentage de gain
-        gain_percentage = ((current_price / buy_price) - 1) * 100
+        # Formatage du multiplicateur
+        if multiplier >= 10:
+            mult_display = f"x{int(multiplier)}"
+        else:
+            mult_display = f"x{multiplier:.2f}"
         
         # Formatage du message
         message = (
             f"🚀 **ALERTE TOKEN SOLANA**\n\n"
             f"🪙 **Token: {token_name}**\n\n"
-            f"🎯 **Multiplicateur atteint: x{multiplier}**\n\n"
+            f"🎯 **Multiplicateur atteint: {mult_display}**\n\n"
             f"💰 **PNL: ${pnl:,.2f}**\n"
             f"📈 **Gain: {gain_percentage:+.2f}%**\n\n"
-            f"📊 Prix d'achat: ${buy_price:.8f}\n"
-            f"📊 Prix actuel: ${current_price:.8f}\n"
+            f"📊 Market Cap achat: ${buy_market_cap:,.0f}\n"
+            f"📊 Market Cap actuel: ${current_market_cap:,.0f}\n"
+            f"💵 Prix actuel: ${current_price:.8f}\n"
             f"💵 Investissement initial: ${amount_invested:,.2f}\n"
             f"💵 Valeur actuelle: ${current_value:,.2f}"
         )
@@ -138,24 +137,23 @@ def send_telegram_alert(token_name: str, multiplier: int, current_price: float,
 
 def main():
     """
-    Fonction principale - Surveille le prix et envoie des alertes pour tous les tokens
+    Fonction principale - Surveille le market cap et envoie des alertes pour tous les tokens
     """
     print("=" * 60)
-    print("🚀 Script de surveillance de tokens Solana")
+    print("🚀 Script de surveillance de tokens Solana (Market Cap)")
     print("=" * 60)
     print(f"📊 Nombre de tokens surveillés: {len(TOKENS)}")
     print(f"⏱️  Vérification toutes les {CHECK_INTERVAL // 60} minutes")
-    print(f"🎯 Paliers surveillés: {', '.join([f'x{m}' for m in MULTIPLIERS])}")
+    print(f"🎯 Paliers surveillés: {', '.join([f'x{m}' if m >= 10 else f'x{m:.2f}' for m in MULTIPLIERS])}")
     print("=" * 60)
     print("\n📋 Tokens configurés:")
     for i, token in enumerate(TOKENS, 1):
-        print(f"  {i}. {token['name']} - Prix d'achat: ${token['buy_price']:.8f} - Investi: ${token['amount_invested']:,.2f}")
+        print(f"  {i}. {token['name']} - MC achat: ${token['buy_market_cap']:,.0f} - Investi: ${token['amount_invested']:,.2f}")
     print("=" * 60)
     print()
     
     # Dictionnaire pour tracker les alertes déjà envoyées par token
-    # Structure: {token_name: {multiplier: bool}}
-    alerts_sent: Dict[str, Dict[int, bool]] = {
+    alerts_sent: Dict[str, Dict[float, bool]] = {
         token["name"]: {multiplier: False for multiplier in MULTIPLIERS}
         for token in TOKENS
     }
@@ -165,53 +163,61 @@ def main():
     while True:
         iteration += 1
         print(f"\n{'='*60}")
-        print(f"[{iteration}] Vérification des prix...")
+        print(f"[{iteration}] Vérification des market caps...")
         print(f"{'='*60}")
         
-        # Vérifier chaque token
         for token in TOKENS:
             token_name = token["name"]
             token_address = token["address"]
-            buy_price = token["buy_price"]
+            buy_market_cap = token["buy_market_cap"]
             amount_invested = token["amount_invested"]
             
             print(f"\n🪙 Token: {token_name}")
             print(f"   📍 Adresse: {token_address[:8]}...{token_address[-8:]}")
             
-            # Récupération du prix actuel
-            current_price = get_token_price(token_address)
+            token_data = get_token_data(token_address)
             
-            if current_price is None:
-                print(f"   ⚠️  Impossible de récupérer le prix")
+            if token_data is None:
+                print(f"   ⚠️  Impossible de récupérer les données")
                 continue
             
-            print(f"   💹 Prix actuel: ${current_price:.8f}")
+            current_price, current_market_cap = token_data
             
-            # Calcul du multiplicateur actuel
-            current_multiplier = current_price / buy_price
-            print(f"   📊 Multiplicateur actuel: x{current_multiplier:.2f}")
+            print(f"   💹 Prix actuel: ${current_price:.8f}")
+            print(f"   📊 Market Cap actuel: ${current_market_cap:,.0f}")
+            
+            # Calcul du multiplicateur basé sur le market cap
+            current_multiplier = current_market_cap / buy_market_cap
+            print(f"   📈 Multiplicateur actuel: x{current_multiplier:.2f}")
+            
+            # Calcul du PNL actuel
+            current_value = amount_invested * current_multiplier
+            current_pnl = current_value - amount_invested
+            pnl_percent = (current_multiplier - 1) * 100
+            print(f"   💰 PNL actuel: ${current_pnl:,.2f} ({pnl_percent:+.2f}%)")
             
             # Vérification de chaque palier
             for multiplier in MULTIPLIERS:
-                target_price = buy_price * multiplier
+                target_market_cap = buy_market_cap * multiplier
                 
-                # Si le prix a atteint ou dépassé le palier et qu'on n'a pas encore alerté
-                if current_price >= target_price and not alerts_sent[token_name][multiplier]:
-                    print(f"\n   🎉 Palier x{multiplier} atteint pour {token_name}!")
+                if current_market_cap >= target_market_cap and not alerts_sent[token_name][multiplier]:
+                    mult_display = f"x{int(multiplier)}" if multiplier >= 10 else f"x{multiplier:.2f}"
+                    print(f"\n   🎉 Palier {mult_display} atteint pour {token_name}!")
                     print(f"      Envoi de l'alerte Telegram...")
                     
-                    if send_telegram_alert(token_name, multiplier, current_price, buy_price, amount_invested):
+                    if send_telegram_alert(token_name, multiplier, current_market_cap, 
+                                          buy_market_cap, amount_invested, current_price):
                         alerts_sent[token_name][multiplier] = True
                         print(f"      ✅ Alerte envoyée avec succès!")
                     else:
                         print(f"      ❌ Échec de l'envoi de l'alerte")
             
-            # Afficher les paliers déjà atteints pour ce token
+            # Afficher les paliers déjà atteints
             reached = [m for m, sent in alerts_sent[token_name].items() if sent]
             if reached:
-                print(f"   ✅ Paliers déjà alertés: {', '.join([f'x{m}' for m in reached])}")
+                reached_display = [f"x{int(m)}" if m >= 10 else f"x{m:.2f}" for m in reached]
+                print(f"   ✅ Paliers déjà alertés: {', '.join(reached_display)}")
         
-        # Attendre avant la prochaine vérification
         print(f"\n{'='*60}")
         print(f"⏳ Prochaine vérification dans {CHECK_INTERVAL // 60} minutes...")
         print(f"{'='*60}")
@@ -220,14 +226,11 @@ def main():
 
 if __name__ == "__main__":
     try:
-        # Vérification de la configuration
         if not TOKENS:
             print("❌ Erreur: Aucun token configuré dans la liste TOKENS")
-            print("   Veuillez ajouter au moins un token dans la configuration.")
             exit(1)
         
-        # Vérification que tous les tokens ont les champs requis
-        required_fields = ["name", "address", "buy_price", "amount_invested"]
+        required_fields = ["name", "address", "buy_market_cap", "amount_invested"]
         for i, token in enumerate(TOKENS, 1):
             for field in required_fields:
                 if field not in token:
