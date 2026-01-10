@@ -14,8 +14,8 @@ TOKENS = [
     {
         "name": "MMGA",
         "address": "87B6mb9KBjaF5NHrB3H33f7grdUHi4oWmMErjhZ5bonk",
-        "buy_market_cap": 643000,
-        "amount_invested": 37.0
+        "buy_market_cap": 1000000,
+        "amount_invested": 35.4
     },
     {
         "name": "Hungry",
@@ -47,6 +47,12 @@ TOKENS = [
         "buy_market_cap": 401000,
         "amount_invested": 7.00
     },
+    {
+        "name": "MAGIKARP",
+        "address": "CYwajBHYQn9oPa9fJrhPuWziczSAbgg4mnssJZ6SBAGS",
+        "buy_market_cap": 137000,
+        "amount_invested": 4.3
+    },
 ]
 
 # Configuration Telegram
@@ -61,7 +67,7 @@ PUSHOVER_API_TOKEN = "ar6opmfea5bowkn1g6bf9d2ve19pnm"
 CHECK_INTERVAL = 300
 
 # Multiplicateurs à surveiller (gains)
-MULTIPLIERS = [1.05, 1.1, 1.5, 2, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+MULTIPLIERS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 
 # Seuils de perte à surveiller
 LOSS_THRESHOLDS = [-0.10, -0.25]  # -10% et -25%
