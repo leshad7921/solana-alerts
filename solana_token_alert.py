@@ -35,6 +35,18 @@ TOKENS = [
         "buy_market_cap": 86100,
         "amount_invested": 7.26
     },
+    {
+        "name": "CHUD",
+        "address": "EjNcJDRCASkxyPkiY6nbcGFqpu4frDE6qAupzaq1bonk",
+        "buy_market_cap": 246000,
+        "amount_invested": 15.48
+    },
+    {
+        "name": "AMELIA",
+        "address": "8TuHAfTBTMW1fJNq5bNoeX4zhk2492DNsCgVSYzApump",
+        "buy_market_cap": 401000,
+        "amount_invested": 7.00
+    },
 ]
 
 # Configuration Telegram
